@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<Error xmlns="http://mns.aliyuncs.com/doc/v1">
+  <Code>MessageNotExist</Code>
+  <Message>Message not exist.</Message>
+  <RequestId>5AF6C21B27E50BDCB60EA6D2</RequestId>
+  <HostId>http://1226525498732712.mns.cn-hangzhou.aliyuncs.com.mns.cn-shenzhen.aliyuncs.com</HostId>
+</Error>
