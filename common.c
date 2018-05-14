@@ -85,18 +85,14 @@ static void CreateDelete(char *request,char *CanonicalizedResource,const char *q
     strcat(request," HTTP/1.1\n");
     snprintf(CanonicalizedResource,128,"%s%s%s%s%s","/queues/",queueName,"/messages?","ReceiptHandle=",ReceiptHandle);	
 }
-static void CreatePost(char *request,char *CanonicalizedResource,const char *queueName,const char *ReceiptHandle,const char *account_id)
+static void CreatePost(char *request,char *CanonicalizedResource,const char *queueName,const char *account_id)
 { 
-    strcat(request,"DELETE ");
-    //strcat(request,"http://1183877247676334.mns.cn-shenzhen.aliyuncs.com/");
+    strcat(request,"POST ");
     AppendAccountId(request,account_id);
     strcat(request,"queues/");
     strcat(request,queueName);
-    strcat(request,"/messages?");
-    strcat(request,"ReceiptHandle=");
-    strcat(request,ReceiptHandle);
-    strcat(request," HTTP/1.1\n");
-    snprintf(CanonicalizedResource,128,"%s%s%s%s%s","/queues/",queueName,"/messages?","ReceiptHandle=",ReceiptHandle);	
+    strcat(request,"/messages HTTP/1.1\n");
+    snprintf(CanonicalizedResource,128,"%s%s%s","/queues/",queueName,"/messages");	
 }
 static void CreateHost(char *request,const char *AccountId)
 {
@@ -167,10 +163,11 @@ static void createSignature(char *request,const char *date,const char *method,co
     free(Signature);
 }
 
-static void CreateCommonHead(char *request,const char *queueName,int method,const char *ReceiptHandle,const char *ACCOUNT_ID,const char *SECRET,const char *AccessKeyID){
+static void CreateCommonHead(char *request,const char *queueName,int method,const char *ReceiptHandle,const char *ACCOUNT_ID,const char *SECRET,const char *AccessKeyID,int Content_Length){
     char date[128]={0};
     char CanonicalizedResource[128]={0};
     char methodStr[10]={0};
+    char Content[64]={0};
     switch(method){
         case PUT:
 	      	break;
@@ -184,6 +181,10 @@ static void CreateCommonHead(char *request,const char *queueName,int method,cons
 		break;
 	case POST:
 		
+		CreatePost(request, CanonicalizedResource,queueName,(const char *)ACCOUNT_ID);
+		snprintf(Content,64,"Content-Length:%d\n",Content_Length);
+		strcat(request,Content);	
+		snprintf(methodStr,10,"%s","POST");
 		break;
     }
     CreateDate(request,date);
@@ -201,18 +202,18 @@ static void CreateCommonHead(char *request,const char *queueName,int method,cons
 @: request :构造的消息结果  queueName: 设备mac 账号
 */
 void GetMnsRequest(char *request,const char *queueName,const char *ACCOUNT_ID,const char *SECRET,const char *AccessKeyID){
-	CreateCommonHead(request,queueName,GET,NULL,ACCOUNT_ID,SECRET,AccessKeyID);	
+	CreateCommonHead(request,queueName,GET,NULL,ACCOUNT_ID,SECRET,AccessKeyID,0);	
 }
 /*
 @:构造删除服务器上消息请求
 @: request :构造的消息结果  queueName: 设备mac 账号
 */
 void delteMnsReq(char *request,const char *queueName,const char *ReceiptHandle,const char *ACCOUNT_ID,const char *SECRET,const char *AccessKeyID){
-    CreateCommonHead(request,queueName,DELETE,ReceiptHandle,ACCOUNT_ID,SECRET,AccessKeyID);
+    CreateCommonHead(request,queueName,DELETE,ReceiptHandle,ACCOUNT_ID,SECRET,AccessKeyID,0);
 }
 
-void SendMnsMessage(char *request,const char *queueName,const char *ACCOUNT_ID,const char *SECRET,const char *AccessKeyID){
-
+void SendMnsMessage(char *request,const char *queueName,const char *ACCOUNT_ID,const char *SECRET,const char *AccessKeyID,int Content_Length){
+	CreateCommonHead(request,queueName,POST,NULL,ACCOUNT_ID,SECRET,AccessKeyID,Content_Length);	
 }
 
 #if 0

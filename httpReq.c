@@ -75,7 +75,7 @@ void parse_url(const char *url, char *domain, int *port, char *file_name){
 
 
 //#define LOG_FILE	
-static int GetAliOsMsg(int method,const char *queueName,const char *ReceiptHandle){
+static int GetAliOsMsg(int method,const char *queueName,const char *ReceiptHandle,char *get_md5Val){
 	int sockfd = 0;
     char buffer[1] = "";
     struct hostent   *host=NULL;
@@ -87,6 +87,8 @@ static int GetAliOsMsg(int method,const char *queueName,const char *ReceiptHandl
     int send = 0;
     int totalsend = 0;
     int i = 0;
+    char *postMessage=NULL;
+	
     //GetHost(aliUrl, host_addr, host_file, &portnumber);
 	parse_url((const char *)alios->requestUrl, host_addr, &portnumber, host_file);
 	
@@ -110,6 +112,28 @@ static int GetAliOsMsg(int method,const char *queueName,const char *ReceiptHandl
 	}
 	else if(method==DELETE){
 		delteMnsReq(request,queueName,ReceiptHandle,host_addr,(const char *)alios->SECRET,(const char *)alios->AccessKeyID);
+	}else if(method==POST){
+		xmlfp = fopen(RECV_XML,"w+");
+		if(xmlfp==NULL){
+			SYS_ERR_LOG("open xml failed \n");
+			goto exit1;
+		} 	
+		char post[]={"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Message xmlns=\"http://mns.aliyuncs.com/doc/v1/\">\n\t<MessageBody>%s</MessageBody>\n\t<DelaySeconds>0</DelaySeconds>\n\t<Priority>1</Priority>\n</Message>\n"};
+		
+		
+		char *msg="linux message test 1";
+		unsigned char * msg_64= base64_encode((unsigned char *) msg, strlen(msg));
+		CreateMsg_Md5Sum((const char *)msg_64,get_md5Val);
+		postMessage = (char *)calloc(1,strlen(msg_64)+strlen(post)+8);
+		if(postMessage==NULL){
+			perror("calloc failed ");
+			goto exit0;
+		}
+		sprintf(postMessage,post,msg_64);
+		printf("%s\n",postMessage);
+		SendMnsMessage(request,queueName,host_addr,(const char *)alios->SECRET,(const char *)alios->AccessKeyID,strlen(postMessage));
+		printf("%s\n",request);
+		free(msg_64);
 	}
 	
     if((host=gethostbyname(host_addr)) == NULL)
@@ -137,10 +161,25 @@ static int GetAliOsMsg(int method,const char *queueName,const char *ReceiptHandl
         totalsend += send;
         //SYS_LOG("%d bytes send OK!\n ", totalsend);
     }
-
+	if(postMessage!=NULL){
+		send = 0;
+		totalsend = 0;
+		nbytes=strlen(postMessage);
+		while(totalsend < nbytes){
+			send = write(sockfd, postMessage, nbytes-totalsend);
+			if(send == -1){
+				SYS_ERR_LOG( "send error!%s\n ", strerror(errno));
+				goto exit2;
+			}
+			totalsend += send;
+		 }
+		free(postMessage);
+		postMessage=NULL;
+	}
+	
     SYS_LOG( "\nThe   following   is   the   response   header:\n ");
     i=0;
-//#define DBG_XML_DATA
+#define DBG_XML_DATA
 #ifdef DBG_XML_DATA
 	char XMLdata[4096];
     memset(XMLdata,0,4096);
@@ -154,18 +193,18 @@ static int GetAliOsMsg(int method,const char *queueName,const char *ReceiptHandl
                 i = 0;
             }
 #ifdef DBG_XML_DATA
-            //printf( "%c ", buffer[0]);
+            printf( "%c ", buffer[0]);
 #endif
         }else{
 #ifdef DBG_XML_DATA	        
 			XMLdata[xmlCount++] = buffer[0];
 #endif
-			if(method==GET){
+			if(method==GET||method==POST){
 				fwrite(buffer,1,1,xmlfp);	
 				#ifdef LOG_FILE
 					fwrite(buffer,1,1,logfp);	
 				#endif
-				//printf( "%c ", buffer[0]);
+				printf( "%c ", buffer[0]);
 			}
 		}
     }
@@ -176,7 +215,7 @@ static int GetAliOsMsg(int method,const char *queueName,const char *ReceiptHandl
 	fclose(logfp);
 #endif
 exit2:
-	if(method==GET)
+	if(method==GET||method==POST)
 		fclose(xmlfp);
 exit1:
 	 close(sockfd); 
@@ -189,7 +228,7 @@ static int paseraliMsg(const char *queueName){
 	char ReceiptHandle[128]={0};
 	struct stat buf;
 	//memset(&buf,0,sizeof(struct stat));
-	GetAliOsMsg(GET,queueName,"");
+	GetAliOsMsg(GET,queueName,"","");
 	stat((const char *)RECV_XML , &buf);
 	if(buf.st_size==0){
 		SYS_WARN_LOG("is empty file \n");
@@ -202,7 +241,7 @@ static int paseraliMsg(const char *queueName){
 		return -1;
 	}
 	SYS_WARN_LOG("start delete ReceiptHandle =%s\n",ReceiptHandle);
-	GetAliOsMsg(DELETE,queueName,(const char *)ReceiptHandle);
+	GetAliOsMsg(DELETE,queueName,(const char *)ReceiptHandle,"");
 	return 0;
 }
 
@@ -221,6 +260,12 @@ static void *runAliyunMns(void *arg){
 	return NULL;
 }
 
+int devicestoapp(const char *msg){
+	char get_md5Val[64]={0};
+	GetAliOsMsg(POST,alios->Devquename,"",get_md5Val);
+	return 0;
+}
+	
 void GetAliyunMns(const char *requestUrl,const char *SECRET,const char *AccessKeyID,const char * queueName,void GetMNS(const char *JsonData)){
 	alios =(AliMns *)calloc(1,sizeof(AliMns));
 	if(alios==NULL){
@@ -234,10 +279,14 @@ void GetAliyunMns(const char *requestUrl,const char *SECRET,const char *AccessKe
 	snprintf(alios->requestUrl,128,"%s",requestUrl);
 	snprintf(alios->SECRET,32,"%s",SECRET);
 	snprintf(alios->AccessKeyID,20,"%s",AccessKeyID);
+#if 0	
 	if(pthread_create_attr(runAliyunMns,alios)){
 		SYS_ERR_LOG("\n create aliyun pthread failed  \n");
 		goto exit0;
 	}
+#else
+	devicestoapp("hello world");
+#endif
 	return ;
 exit0:
 	free(alios);
@@ -345,6 +394,7 @@ int main(int   argc,   char   *argv[]){
 	const char *AccessKeyID="LTAI0V1E2e1MAHdV";
 	
 	const char *queueName= "linkeweici00001";
+	
 	GetAliyunMns(requestUrl,SECRET,AccessKeyID,queueName,GetMNS);
 	while(1){
 		sleep(1);

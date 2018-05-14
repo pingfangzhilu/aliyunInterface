@@ -1,7 +1,1 @@
-<?xml version="1.0"?>
-<Error xmlns="http://mns.aliyuncs.com/doc/v1">
-  <Code>MessageNotExist</Code>
-  <Message>Message not exist.</Message>
-  <RequestId>5AF6C21B27E50BDCB60EA6D2</RequestId>
-  <HostId>http://1226525498732712.mns.cn-hangzhou.aliyuncs.com.mns.cn-shenzhen.aliyuncs.com</HostId>
-</Error>
+<?xml version="1.0" encoding="UTF-8" ?> <Message xmlns="http://mns.aliyuncs.com/doc/v1"><MessageId>4C92E68C5609EE0D-2-1635E2142E0-200000002</MessageId><MessageBodyMD5>55908878D2E0294F3FFEEAED37F9FEAC</MessageBodyMD5></Message>

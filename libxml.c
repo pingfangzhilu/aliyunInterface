@@ -181,6 +181,26 @@ int GetXmlData(const char *xmlfile,char *ReceiptHandle,void weixinMessage(const 
         mxmlDelete(tree);
         return ret;
 }
+
+int GetXmlMd5(const char *xmlfile,char *md5){
+        FILE *fp;
+        mxml_node_t *tree,*node;
+        int ret=-1;
+	 //test_read(xmlfile);		
+        fp = fopen(xmlfile, "r");	
+        tree = mxmlLoadFile(NULL, fp,MXML_OPAQUE_CALLBACK);
+        fclose(fp);
+
+        mxml_node_t *val;
+        node = mxmlGetFirstChild(tree);
+        val = mxmlFindElement(node, tree, "MessageBodyMD5",NULL, NULL,MXML_DESCEND);
+        if(val){
+                printf("MessageBodyMD5: %s \n",val->child->value.opaque);
+        
+        }
+        mxmlDelete(tree);
+        return ret;
+}
 #endif
 #if 0
 /********************************************************************

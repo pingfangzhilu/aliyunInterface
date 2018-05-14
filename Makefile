@@ -23,6 +23,7 @@ CC=$(CROSS_COMPILE)gcc
 all += httpReq.o
 all += common.o
 all += libxml.o
+all += md5.o
 
 export CC
 $(TAR): $(all)
