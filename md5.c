@@ -7,6 +7,7 @@ filename :待校验的文件
 md5Val:生成出的校验值
 */
 int CreateFile_Md5Sum(const char *filename,char *md5Val){  
+#if 0
         MD5_CTX ctx;  
         int len = 0;  
         unsigned char buffer[1024] = {0};  
@@ -41,9 +42,11 @@ int CreateFile_Md5Sum(const char *filename,char *md5Val){
         }  
         snprintf(md5Val,33,"%s",buf);
      	//printf("%s : md5 is %s\n",__func__,buf); 
-        return 0;  
+#endif
+	return 0;  
 }  
 int CreateMsg_Md5Sum(const char *msg,char *md5Val){
+#if 0	
 	MD5_CTX ctx;	
 	int len = 0;
 	unsigned char digest[16] = {0};
@@ -63,6 +66,7 @@ int CreateMsg_Md5Sum(const char *msg,char *md5Val){
             //printf("buf = %s len =%d \n",buf,len);
         }
         snprintf(md5Val,33,"%s",buf);
+#endif		
 	return 0;
 }
 

@@ -23,6 +23,8 @@ extern unsigned char *base64_encode(unsigned char *str,int inSize);
 //将字符串code进行base64解码，返回处理结果
 extern unsigned char *base64_decode(unsigned char *code,int inSize);
 
+extern int websDecode64(char *outbuf, char *string, int outlen);
+
 /****************************************************************
 函数说明	:写入Log  日志
 入口参数	:bLog  表明是否为日志文件,place 代码位置
@@ -47,6 +49,8 @@ extern void   ToLowerCase(char* s);
 返回指向filename文件当中内存指针，需要释放这块内存
 ********************************************/
 extern char *readFileBuf(const char *filename);
+
+extern void parse_url(const char *url, char *domain, int *port, char *file_name);
 
 #ifdef __cplusplus
 };

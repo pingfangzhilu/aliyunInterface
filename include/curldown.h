@@ -4,7 +4,19 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-extern void parse_url(const char *url, char *domain, int *port, char *file_name);
+
+#define DOWN_QUIT	0
+#define DOWN_WAIT	1
+#define DOWN_ING	2
+
+typedef struct{
+	void *user_data;
+	char url[128];
+	int timeout;
+	void (*startDownFile)(void *user_data,const char *filename,int streamLen);
+	void (*getStreamData)(void *user_data,const char *data,int size);
+	void (*endDownFile)(void *user_data,int endSize);
+}DownLoad_t;
 
 extern void progressBar(long cur_size, long total_size,float *getPercent);
 
@@ -14,7 +26,7 @@ extern void setDowning(void);
 
 extern int getDownState(void);
 
-extern void demoDownFile(const char *url,int timeout,void StartDownFile(const char *filename,int streamLen),void GetStreamData(const char *data,int size),void EndDownFile(int endSize));
+extern void curlDownloadFile(DownLoad_t *download);
 
 extern void initCurl(void);
 

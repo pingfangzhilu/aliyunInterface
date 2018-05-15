@@ -151,6 +151,7 @@ static void createSignature(char *request,const char *date,const char *method,co
     unsigned int digest_len=0;
     int key_length=strlen(SECRET);
     char digest[EVP_MAX_MD_SIZE]={0};
+	
     HMAC(EVP_sha1(), (const void *)SECRET, key_length,(const unsigned char *)hmac_str1,hmac_len,(unsigned char *)digest, &digest_len);
 //    pt(digest, digest_len);
     char * Signature = (char *)base64_encode((unsigned char *)digest,digest_len);

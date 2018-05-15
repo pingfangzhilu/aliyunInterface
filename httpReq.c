@@ -6,6 +6,7 @@ help doc :https://help.aliyun.com/document_detail/35134.html?spm=a2c4g.11186623.
 
 #include "base/demo_tcp.h"
 #include "base/pool.h"
+#include "systools.h"
 #include "config.h"
 
 #define LOCK_MSG 		1
@@ -23,81 +24,6 @@ typedef struct{
 
 static AliMns_t *alios =NULL;
 
-static char    map64[] = {
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 62, -1, -1, -1, 63,
-    52, 53, 54, 55, 56, 57, 58, 59, 60, 61, -1, -1, -1, -1, -1, -1,
-    -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
-    15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, -1, -1, -1, -1, -1,
-    -1, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
-    41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-};
-static char    alphabet64[] = {
-    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H',
-    'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P',
-    'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X',
-    'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f',
-    'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n',
-    'o', 'p', 'q', 'r', 's', 't', 'u', 'v',
-    'w', 'x', 'y', 'z', '0', '1', '2', '3',
-    '4', '5', '6', '7', '8', '9', '+', '/',
-};
-/*********************************** Code *************************************/
-/*
- *    Decode a buffer from "string" and into "outbuf"
- */
-static int websDecode64(char *outbuf, char *string, int outlen)
-{
-    unsigned long    shiftbuf;
-    char            *cp, *op;
-    int                c, i, j, shift;
-    op = outbuf;
-    *op = '\0';
-    cp = string;
-    while (*cp && *cp != '=') {
-        /*
-         *        Map 4 (6bit) input bytes and store in a single long (shiftbuf)
-         */
-        shiftbuf = 0;
-        shift = 18;
-        for (i = 0; i < 4 && *cp && *cp != '='; i++, cp++) {
-            c = map64[*cp & 0xff];
-            if (c == -1) {
-                printf("Bad string: %s at %c index %d \n", string,c, i);
-                return -1;
-            }
-            shiftbuf = shiftbuf | (c << shift);
-            shift -= 6;
-        }
-        /*
-         *        Interpret as 3 normal 8 bit bytes (fill in reverse order).
-         *        Check for potential buffer overflow before filling.
-         */
-        --i;
-        if ((op + i) >= &outbuf[outlen]) {
-            strcpy(outbuf, "String too big");
-            return -1;
-        }
-        for (j = 0; j < i; j++) {
-            *op++ = (char) ((shiftbuf >> (8 * (2 - j))) & 0xff);
-        }
-        *op = '\0';
-    }
-    return 0;
-}
 void lockMsg(void){
 	alios->lock =LOCK_MSG;
 }
@@ -109,44 +35,6 @@ static void SetSockRecvtimeOut(int sock,int time){
     tv.tv_sec = time;
     tv.tv_usec=0;
     setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv, sizeof(struct timeval));
-}
-
-static void parse_url(const char *url, char *domain, int *port, char *file_name){
-        int j = 0;
-        int start = 0;
-        *port = 80;
-        char *patterns[] = {"http://", "https://", NULL};
-        int i;
-        for(i = 0; patterns[i]; i++)
-                if (strncmp(url, patterns[i], strlen(patterns[i])) == 0)
-                        start = strlen(patterns[i]);
-        for( i = start; url[i] != '/' && url[i] != '\0'; i++, j++)
-                domain[j] = url[i];
-        domain[j] = '\0';
-        char *pos = strstr(domain, ":");
-        if (pos)
-                sscanf(pos, ":%d", port);
-        for( i = 0; i < (int)strlen(domain); i++)
-        {
-                if (domain[i] == ':')
-                {
-                        domain[i] = '\0';
-                        break;
-                }
-        }
-        j = 0;
-        for ( i = start; url[i] != '\0'; i++)
-        {
-                if (url[i] == '/')
-                {
-                        if (i !=  strlen(url) - 1)
-                                j = 0;
-                                continue;
-                }
-                else
-                        file_name[j++] = url[i];
-        }
-        file_name[j] = '\0';
 }
 
 //#define LOG_FILE	
@@ -348,8 +236,8 @@ static int __initAliyunMns(const char *requestUrl,const char *SECRET,const char 
 	alios->lock = UNLOCK_MSG;
 	
 	//snprintf(alios->Devquename,32,"%s",queueName);
-	snprintf(alios->Devquename,32,"%s_d",queueName);
-	snprintf(alios->AppQuename,32,"%s_a",queueName);
+	snprintf(alios->Devquename,32,"%s-d",queueName);
+	snprintf(alios->AppQuename,32,"%s-a",queueName);
 	snprintf(alios->requestUrl,128,"%s",requestUrl);
 	snprintf(alios->SECRET,32,"%s",SECRET);
 	snprintf(alios->AccessKeyID,20,"%s",AccessKeyID);
@@ -380,16 +268,20 @@ void cleanAliyunMns(void){
 	free(alios);
 }
 
+//#define TEST_MAIN
 #ifdef TEST_MAIN
 static void testPaserMns(const char *msg){
 	printf("%s: msg =%s\n",__func__,msg);
 }
 int main(int   argc,char *argv[]){	
 	const char *queueName= "linkeweici00001";
+	testdownload();
+/*	
 	initAliyunMns(queueName,testPaserMns);
 	while(1){
 		sleep(1);
 	}
+*/	
 	return 0;
 }
 #endif
