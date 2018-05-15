@@ -168,13 +168,13 @@ int GetXmlData(const char *xmlfile,char *ReceiptHandle,void weixinMessage(const 
         node = mxmlGetFirstChild(tree);
         val = mxmlFindElement(node, tree, "MessageBody",NULL, NULL,MXML_DESCEND);
         if(val){
-                printf("MessageBody: %s \n",val->child->value.opaque);
+                //printf("MessageBody: %s \n",val->child->value.opaque);
                 weixinMessage(val->child->value.opaque);
         }
 
         val = mxmlFindElement(node, tree, "ReceiptHandle",NULL, NULL,MXML_DESCEND);
         if(val){
-                printf("ReceiptHandle: %s \n",val->child->value.opaque);
+                //printf("ReceiptHandle: %s \n",val->child->value.opaque);
                 memcpy(ReceiptHandle,val->child->value.opaque,strlen(val->child->value.opaque));
                 ret=0;
         }
@@ -195,8 +195,8 @@ int GetXmlMd5(const char *xmlfile,char *md5){
         node = mxmlGetFirstChild(tree);
         val = mxmlFindElement(node, tree, "MessageBodyMD5",NULL, NULL,MXML_DESCEND);
         if(val){
-                printf("MessageBodyMD5: %s \n",val->child->value.opaque);
-        
+		//printf("MessageBodyMD5: %s \n",val->child->value.opaque);
+        	sprintf(md5,"%s",val->child->value.opaque);		
         }
         mxmlDelete(tree);
         return ret;

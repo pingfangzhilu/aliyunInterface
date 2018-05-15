@@ -8,295 +8,20 @@ help doc :https://help.aliyun.com/document_detail/35134.html?spm=a2c4g.11186623.
 #include "base/pool.h"
 #include "config.h"
 
-#define LOCK_WEIXIN	1
-#define UNLOCK_WEIXIN	0
+#define LOCK_MSG 		1
+#define UNLOCK_MSG		0
 typedef struct{
-	unsigned char lockWeixin;
+	unsigned char lock;
 	unsigned char quit;
 	char Devquename[32];
+	char AppQuename[32];
 	char requestUrl[128];
 	char SECRET[32];
 	char AccessKeyID[20];
 	void (*CallGetMNS)(const char *JsonData);
-}AliMns;
+}AliMns_t;
 
-static AliMns *alios =NULL;
-
-void lock_weixin(void){
-	alios->lockWeixin =LOCK_WEIXIN;
-}
-void unlock_weixin(void){
-	alios->lockWeixin = UNLOCK_WEIXIN;
-}
-void SetSockRecvtimeOut(int sock,int time){
-    struct timeval tv;
-    tv.tv_sec = time;
-    tv.tv_usec=0;
-    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv, sizeof(struct timeval));
-}
-
-void parse_url(const char *url, char *domain, int *port, char *file_name){
-        int j = 0;
-        int start = 0;
-        *port = 80;
-        char *patterns[] = {"http://", "https://", NULL};
-        int i;
-        for(i = 0; patterns[i]; i++)
-                if (strncmp(url, patterns[i], strlen(patterns[i])) == 0)
-                        start = strlen(patterns[i]);
-        for( i = start; url[i] != '/' && url[i] != '\0'; i++, j++)
-                domain[j] = url[i];
-        domain[j] = '\0';
-        char *pos = strstr(domain, ":");
-        if (pos)
-                sscanf(pos, ":%d", port);
-        for( i = 0; i < (int)strlen(domain); i++)
-        {
-                if (domain[i] == ':')
-                {
-                        domain[i] = '\0';
-                        break;
-                }
-        }
-        j = 0;
-        for ( i = start; url[i] != '\0'; i++)
-        {
-                if (url[i] == '/')
-                {
-                        if (i !=  strlen(url) - 1)
-                                j = 0;
-                                continue;
-                }
-                else
-                        file_name[j++] = url[i];
-        }
-        file_name[j] = '\0';
-}
-
-
-//#define LOG_FILE	
-static int GetAliOsMsg(int method,const char *queueName,const char *ReceiptHandle,char *get_md5Val){
-	int sockfd = 0;
-    char buffer[1] = "";
-    struct hostent   *host=NULL;
-    int portnumber = 0;
-    int nbytes = 0;
-    char host_addr[256] = {0};
-    char host_file[256] = {0};
-    char request[1024] = "";
-    int send = 0;
-    int totalsend = 0;
-    int i = 0;
-    char *postMessage=NULL;
-	
-    //GetHost(aliUrl, host_addr, host_file, &portnumber);
-	parse_url((const char *)alios->requestUrl, host_addr, &portnumber, host_file);
-	
-    SYS_LOG("webhost:%s\n ", host_addr);
-    SYS_LOG("hostfile:%s\n ", host_file);
-    SYS_LOG("portnumber:%d\n ", portnumber);
-#ifdef LOG_FILE
-	FILE *logfp = fopen("log.txt","a+");
-	if(logfp==NULL){
-		goto exit1;
-	}
-#endif
-	FILE *xmlfp=NULL;
-	if(method==GET){
-		GetMnsRequest(request,queueName,host_addr,(const char *)alios->SECRET,(const char *)alios->AccessKeyID);
-	    xmlfp = fopen(RECV_XML,"w+");
-		if(xmlfp==NULL){
-			SYS_ERR_LOG("open xml failed \n");
-			goto exit1;
-		} 	
-	}
-	else if(method==DELETE){
-		delteMnsReq(request,queueName,ReceiptHandle,host_addr,(const char *)alios->SECRET,(const char *)alios->AccessKeyID);
-	}else if(method==POST){
-		xmlfp = fopen(RECV_XML,"w+");
-		if(xmlfp==NULL){
-			SYS_ERR_LOG("open xml failed \n");
-			goto exit1;
-		} 	
-		char post[]={"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Message xmlns=\"http://mns.aliyuncs.com/doc/v1/\">\n\t<MessageBody>%s</MessageBody>\n\t<DelaySeconds>0</DelaySeconds>\n\t<Priority>1</Priority>\n</Message>\n"};
-		
-		
-		char *msg="linux message test 1";
-		unsigned char * msg_64= base64_encode((unsigned char *) msg, strlen(msg));
-		CreateMsg_Md5Sum((const char *)msg_64,get_md5Val);
-		postMessage = (char *)calloc(1,strlen(msg_64)+strlen(post)+8);
-		if(postMessage==NULL){
-			perror("calloc failed ");
-			goto exit0;
-		}
-		sprintf(postMessage,post,msg_64);
-		printf("%s\n",postMessage);
-		SendMnsMessage(request,queueName,host_addr,(const char *)alios->SECRET,(const char *)alios->AccessKeyID,strlen(postMessage));
-		printf("%s\n",request);
-		free(msg_64);
-	}
-	
-    if((host=gethostbyname(host_addr)) == NULL)
-    {
-        fprintf(stderr, "Gethostname   error,   %s\n ",   strerror(errno));
-        return -1;
-    }
-	sockfd = create_client(inet_ntoa(*((struct in_addr *)host->h_addr)),portnumber);
-	if(sockfd<0){
-		goto exit0;
-	}
-	SetSockRecvtimeOut(sockfd,30);
-	
-    SYS_LOG("%s\n", request);
-    //printf("%s\n", request);
-    send = 0;
-    totalsend = 0;
-    nbytes=strlen(request);
-    while(totalsend < nbytes){
-        send = write(sockfd, request+totalsend, nbytes-totalsend);
-        if(send == -1){
-            SYS_ERR_LOG( "send error!%s\n ", strerror(errno));
-           	goto exit2;
-        }
-        totalsend += send;
-        //SYS_LOG("%d bytes send OK!\n ", totalsend);
-    }
-	if(postMessage!=NULL){
-		send = 0;
-		totalsend = 0;
-		nbytes=strlen(postMessage);
-		while(totalsend < nbytes){
-			send = write(sockfd, postMessage, nbytes-totalsend);
-			if(send == -1){
-				SYS_ERR_LOG( "send error!%s\n ", strerror(errno));
-				goto exit2;
-			}
-			totalsend += send;
-		 }
-		free(postMessage);
-		postMessage=NULL;
-	}
-	
-    SYS_LOG( "\nThe   following   is   the   response   header:\n ");
-    i=0;
-#define DBG_XML_DATA
-#ifdef DBG_XML_DATA
-	char XMLdata[4096];
-    memset(XMLdata,0,4096);
-    int xmlCount=0;
-#endif
-    while((nbytes=read(sockfd,buffer,1))==1){/*  recv http server response   */
-        if(i < 4){
-            if(buffer[0] == '\r' || buffer[0] == '\n'){
-                i++;
-            }else{
-                i = 0;
-            }
-#ifdef DBG_XML_DATA
-            printf( "%c ", buffer[0]);
-#endif
-        }else{
-#ifdef DBG_XML_DATA	        
-			XMLdata[xmlCount++] = buffer[0];
-#endif
-			if(method==GET||method==POST){
-				fwrite(buffer,1,1,xmlfp);	
-				#ifdef LOG_FILE
-					fwrite(buffer,1,1,logfp);	
-				#endif
-				printf( "%c ", buffer[0]);
-			}
-		}
-    }
-#ifdef DBG_XML_DATA	
-    printf("\nXMLdata : \n%s\n",XMLdata);
-#endif
-#ifdef LOG_FILE	
-	fclose(logfp);
-#endif
-exit2:
-	if(method==GET||method==POST)
-		fclose(xmlfp);
-exit1:
-	 close(sockfd); 
-exit0:
-	printf( "\n");
-	return 0;	
-}
-
-static int paseraliMsg(const char *queueName){
-	char ReceiptHandle[128]={0};
-	struct stat buf;
-	//memset(&buf,0,sizeof(struct stat));
-	GetAliOsMsg(GET,queueName,"","");
-	stat((const char *)RECV_XML , &buf);
-	if(buf.st_size==0){
-		SYS_WARN_LOG("is empty file \n");
-		return -1;
-	}
-	//printf("buf.st_size =%d\n",buf.st_size);
-	GetXmlData((const char *)RECV_XML  ,ReceiptHandle,alios->CallGetMNS);
-	if(!strcmp(ReceiptHandle,"")){
-		SYS_WARN_LOG("not message \n");
-		return -1;
-	}
-	SYS_WARN_LOG("start delete ReceiptHandle =%s\n",ReceiptHandle);
-	GetAliOsMsg(DELETE,queueName,(const char *)ReceiptHandle,"");
-	return 0;
-}
-
-const char *GetqueueName(void){
-	return (const char *)alios->Devquename;
-}
-
-static void *runAliyunMns(void *arg){
-	while(alios->quit){
-		sleep(1);
-		if(alios->lockWeixin ==LOCK_WEIXIN){
-			continue;
-		}
-		paseraliMsg(alios->Devquename);
-	}
-	return NULL;
-}
-
-int devicestoapp(const char *msg){
-	char get_md5Val[64]={0};
-	GetAliOsMsg(POST,alios->Devquename,"",get_md5Val);
-	return 0;
-}
-	
-void GetAliyunMns(const char *requestUrl,const char *SECRET,const char *AccessKeyID,const char * queueName,void GetMNS(const char *JsonData)){
-	alios =(AliMns *)calloc(1,sizeof(AliMns));
-	if(alios==NULL){
-		SYS_ERR_LOG("calloc  aliyun  failed  \n");
-		return ;
-	}
-	alios->CallGetMNS=GetMNS;
-	alios->quit =1;
-	alios->lockWeixin = UNLOCK_WEIXIN;
-	snprintf(alios->Devquename,32,"%s",queueName);
-	snprintf(alios->requestUrl,128,"%s",requestUrl);
-	snprintf(alios->SECRET,32,"%s",SECRET);
-	snprintf(alios->AccessKeyID,20,"%s",AccessKeyID);
-#if 0	
-	if(pthread_create_attr(runAliyunMns,alios)){
-		SYS_ERR_LOG("\n create aliyun pthread failed  \n");
-		goto exit0;
-	}
-#else
-	devicestoapp("hello world");
-#endif
-	return ;
-exit0:
-	free(alios);
-}
-void CleanAliyunMns(void){	
-	alios->quit=0;
-	free(alios);
-}
-#define TEST_MNS
-#ifdef TEST_MNS
+static AliMns_t *alios =NULL;
 
 static char    map64[] = {
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
@@ -334,7 +59,7 @@ static char    alphabet64[] = {
 /*
  *    Decode a buffer from "string" and into "outbuf"
  */
-int websDecode64(char *outbuf, char *string, int outlen)
+static int websDecode64(char *outbuf, char *string, int outlen)
 {
     unsigned long    shiftbuf;
     char            *cp, *op;
@@ -373,29 +98,295 @@ int websDecode64(char *outbuf, char *string, int outlen)
     }
     return 0;
 }
-
-
-static void GetMNS(const char *msgtype){
-	printf("%s: msgtype =%s\n",__func__,msgtype);
-	char msg[2048]={0};
-	websDecode64(msg,(unsigned char *) msgtype, 2048);
-	printf("%s: msg =%s\n",__func__,msg);
-	if(!strcmp(msgtype,"text")){
-		
-	}else if(!strcmp(msgtype,"music")){
-
-	}else if(!strcmp(msgtype,"music")){
-
-	}
+void lockMsg(void){
+	alios->lock =LOCK_MSG;
 }
-int main(int   argc,   char   *argv[]){
+void unlockMsg(void){
+	alios->lock = UNLOCK_MSG;
+}
+static void SetSockRecvtimeOut(int sock,int time){
+    struct timeval tv;
+    tv.tv_sec = time;
+    tv.tv_usec=0;
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv, sizeof(struct timeval));
+}
+
+static void parse_url(const char *url, char *domain, int *port, char *file_name){
+        int j = 0;
+        int start = 0;
+        *port = 80;
+        char *patterns[] = {"http://", "https://", NULL};
+        int i;
+        for(i = 0; patterns[i]; i++)
+                if (strncmp(url, patterns[i], strlen(patterns[i])) == 0)
+                        start = strlen(patterns[i]);
+        for( i = start; url[i] != '/' && url[i] != '\0'; i++, j++)
+                domain[j] = url[i];
+        domain[j] = '\0';
+        char *pos = strstr(domain, ":");
+        if (pos)
+                sscanf(pos, ":%d", port);
+        for( i = 0; i < (int)strlen(domain); i++)
+        {
+                if (domain[i] == ':')
+                {
+                        domain[i] = '\0';
+                        break;
+                }
+        }
+        j = 0;
+        for ( i = start; url[i] != '\0'; i++)
+        {
+                if (url[i] == '/')
+                {
+                        if (i !=  strlen(url) - 1)
+                                j = 0;
+                                continue;
+                }
+                else
+                        file_name[j++] = url[i];
+        }
+        file_name[j] = '\0';
+}
+
+//#define LOG_FILE	
+static int httpRequest(const char *host_addr,int portnumber ,const char *head,const char *Content){
+	int sockfd = 0;
+    	char buffer[1] = "";
+    	struct hostent   *host=NULL;
+    	int nbytes = 0;
+    	int send = 0;
+    	int totalsend = 0;
+    	int i = 0;
+
+#ifdef LOG_FILE
+	FILE *logfp = fopen("log.txt","a+");
+	if(logfp==NULL){
+		goto exit1;
+	}
+#endif
+	FILE *xmlfp=NULL;
+	xmlfp = fopen(RECV_XML,"w+");
+   	if((host=gethostbyname(host_addr)) == NULL){
+       	fprintf(stderr, "Gethostname   error,   %s\n ",   strerror(errno));
+        	return -1;
+    	}
+	sockfd = create_client(inet_ntoa(*((struct in_addr *)host->h_addr)),portnumber);
+	if(sockfd<0){
+		goto exit0;
+	}
+	SetSockRecvtimeOut(sockfd,30);
+	
+    	//printf("%s\n", head);
+    	send = 0;
+    	totalsend = 0;
+    	nbytes=strlen(head);
+    	while(totalsend < nbytes){
+       	send = write(sockfd, head+totalsend, nbytes-totalsend);
+        	if(send == -1){
+            		SYS_ERR_LOG( "send error!%s\n ", strerror(errno));
+           		goto exit1;
+        	}
+        	totalsend += send;
+        	//SYS_LOG("%d bytes send OK!\n ", totalsend);
+    	}
+	if(Content!=NULL||!strcmp(Content,"")){
+		send = 0;
+		totalsend = 0;
+		nbytes=strlen(Content);
+		while(totalsend < nbytes){
+			send = write(sockfd, Content, nbytes-totalsend);
+			if(send == -1){
+				SYS_ERR_LOG( "send error!%s\n ", strerror(errno));
+				goto exit1;
+			}
+			totalsend += send;
+		 }
+	}
+    	SYS_LOG( "\nThe   following   is   the   response   header:\n ");
+    	i=0;
+//#define DBG_XML_DATA
+#ifdef DBG_XML_DATA
+	char XMLdata[4096];
+    	memset(XMLdata,0,4096);
+    	int xmlCount=0;
+#endif
+    	while((nbytes=read(sockfd,buffer,1))==1){/*  recv http server response   */
+      	if(i < 4){
+            if(buffer[0] == '\r' || buffer[0] == '\n'){
+                i++;
+            }else{
+                i = 0;
+	}
+#ifdef DBG_XML_DATA
+            printf( "%c ", buffer[0]);
+#endif
+        }else{
+#ifdef DBG_XML_DATA	        
+			XMLdata[xmlCount++] = buffer[0];
+			printf( "%c ", buffer[0]);
+#endif
+			fwrite(buffer,1,1,xmlfp);	
+#ifdef LOG_FILE
+			fwrite(buffer,1,1,logfp);	
+#endif
+		}
+    }
+#ifdef DBG_XML_DATA	
+    printf("\nXMLdata : \n%s\n",XMLdata);
+#endif
+#ifdef LOG_FILE	
+	fclose(logfp);
+#endif
+	fclose(xmlfp);
+exit1:
+	 close(sockfd); 
+exit0:
+	return 0;	
+}
+
+static int ConsumerMessage(const char *queueName){
+ 	char host_addr[256] = {0};
+    	char host_file[256] = {0};
+    	char request[1024] = "";
+	int portnumber = 0;	
+	parse_url((const char *)alios->requestUrl, host_addr, &portnumber, host_file);
+	GetMnsRequest(request,queueName,host_addr,(const char *)alios->SECRET,(const char *)alios->AccessKeyID);
+	return httpRequest((const char *)host_addr,portnumber,(const char *)request,(const char *)"");
+}
+
+static int delMessage(const char *queueName,const char *ReceiptHandle){
+ 	char host_addr[256] = {0};
+    	char host_file[256] = {0};
+    	char request[1024] = "";
+	int portnumber = 0;	
+	parse_url((const char *)alios->requestUrl, host_addr, &portnumber, host_file);
+	delteMnsReq(request,queueName,ReceiptHandle,host_addr,(const char *)alios->SECRET,(const char *)alios->AccessKeyID);
+	return httpRequest((const char *)host_addr,portnumber,(const char *)request,(const char *)"");
+}
+static int __ProducerMessage(const char *queueName,const void *msg){
+ 	char host_addr[256] = {0};
+    	char host_file[256] = {0};
+    	char request[1024] = "";
+	int portnumber = 0;	
+	char *postMessage=NULL;
+	char get_md5Val[64]={0};
+	char recv_md5Val[64]={0};
+	
+	parse_url((const char *)alios->requestUrl, host_addr, &portnumber, host_file);
+	char post[]={"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Message xmlns=\"http://mns.aliyuncs.com/doc/v1/\">\n\t<MessageBody>%s</MessageBody>\n\t<DelaySeconds>0</DelaySeconds>\n\t<Priority>1</Priority>\n</Message>\n"};	
+	
+	unsigned char * msg_64= base64_encode((unsigned char *) msg, strlen(msg));
+	CreateMsg_Md5Sum((const char *)msg_64,get_md5Val);
+	postMessage = (char *)calloc(1,strlen(msg_64)+strlen(post)+8);
+	if(postMessage==NULL){
+		perror("calloc failed ");
+		return -1;
+	}
+	sprintf(postMessage,post,msg_64);
+	SendMnsMessage(request,queueName,host_addr,(const char *)alios->SECRET,(const char *)alios->AccessKeyID,strlen(postMessage));
+	//printf("%s\n",request);
+	//printf("%s\n",postMessage);
+	int ret =httpRequest((const char *)host_addr,portnumber,(const char *)request,(const char *)postMessage);
+	free(msg_64);
+	free(postMessage);
+	GetXmlMd5((const char *)RECV_XML  ,recv_md5Val);
+	if(strcasecmp(recv_md5Val,get_md5Val)){
+		printf("send message:[%s]  failed md5:[%s]  recv_md5Val:[%s]\n",msg,get_md5Val,recv_md5Val);
+		return -1;
+	}
+	printf("send message:[%s]  ok md5:[%s]  recv_md5Val:[%s]\n",msg,get_md5Val,recv_md5Val);
+	return ret;
+}
+static int ProducerMessage(const void *msg){
+	return __ProducerMessage(alios->AppQuename,msg);
+}
+
+static void PaserMns(const char *base64_msg){
+	//printf("%s: base64_msg =%s\n",__func__,base64_msg);
+	int len = strlen(base64_msg);
+	char *msg = (char *)calloc(1,len);
+	if(msg==NULL){
+		return ;
+	}
+	websDecode64(msg,(unsigned char *) base64_msg, len);
+	//printf("%s: msg =%s\n",__func__,msg);
+	alios->CallGetMNS(msg);
+}
+static void *mnsPthread(void *arg){
+	char ReceiptHandle[128]={0};
+	struct stat buf;
+	while(alios->quit){
+		sleep(1);
+		if(alios->lock==LOCK_MSG){
+			continue;
+		}
+		ConsumerMessage(alios->Devquename);
+		stat((const char *)RECV_XML , &buf);
+		if(buf.st_size==0){
+			SYS_WARN_LOG("is empty file \n");
+			continue;
+		}
+		GetXmlData((const char *)RECV_XML  ,ReceiptHandle,PaserMns);
+		if(!strcmp(ReceiptHandle,"")){
+			SYS_WARN_LOG("not message \n");
+			continue;
+		}
+		SYS_LOG("start delete ReceiptHandle =%s\n",ReceiptHandle);
+		delMessage(alios->Devquename,(const char *)ReceiptHandle);
+	}
+	return NULL;
+}	
+static int __initAliyunMns(const char *requestUrl,const char *SECRET,const char *AccessKeyID,const char * queueName,void GetMNS(const char *JsonData)){
+	alios =(AliMns_t *)calloc(1,sizeof(AliMns_t));
+	if(alios==NULL){
+		SYS_ERR_LOG("calloc  aliyun  failed  \n");
+		return -1;
+	}
+	alios->CallGetMNS=GetMNS;
+	alios->quit =1;
+	alios->lock = UNLOCK_MSG;
+	
+	//snprintf(alios->Devquename,32,"%s",queueName);
+	snprintf(alios->Devquename,32,"%s_d",queueName);
+	snprintf(alios->AppQuename,32,"%s_a",queueName);
+	snprintf(alios->requestUrl,128,"%s",requestUrl);
+	snprintf(alios->SECRET,32,"%s",SECRET);
+	snprintf(alios->AccessKeyID,20,"%s",AccessKeyID);
+	printf("alios->AppQuename = %s\n",alios->AppQuename);
+	printf("alios->Devquename = %s\n",alios->Devquename);
+#if 1	
+	if(pthread_create_attr(mnsPthread,alios)){
+		SYS_ERR_LOG("\n create aliyun pthread failed  \n");
+		goto exit0;
+	}
+#else
+	char *msg="linux message test send";
+	ProducerMessage(msg);
+#endif
+	return 0;
+exit0:
+	free(alios);
+	return -1;
+}
+int initAliyunMns(const char * queueName,void GetMNS(const char *JsonData)){
 	const char *requestUrl="http://1226525498732712.mns.cn-hangzhou.aliyuncs.com";
 	const char *SECRET="U87P0Vy0H9IXdxgb1DdBVoya89aK4r";
 	const char *AccessKeyID="LTAI0V1E2e1MAHdV";
-	
+	return __initAliyunMns(requestUrl,SECRET,AccessKeyID,queueName,GetMNS);
+}
+void cleanAliyunMns(void){	
+	alios->quit=0;
+	free(alios);
+}
+
+#ifdef TEST_MAIN
+static void testPaserMns(const char *msg){
+	printf("%s: msg =%s\n",__func__,msg);
+}
+int main(int   argc,char *argv[]){	
 	const char *queueName= "linkeweici00001";
-	
-	GetAliyunMns(requestUrl,SECRET,AccessKeyID,queueName,GetMNS);
+	initAliyunMns(queueName,testPaserMns);
 	while(1){
 		sleep(1);
 	}
